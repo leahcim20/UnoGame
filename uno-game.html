@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Uno Battle Quest: Full Rules</title>
+    <style>
+        body {
+            background-color: #222;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            margin: 20px;
+            padding: 20px;
+            background: #333;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        h1, h2 {
+            margin: 10px 0;
+        }
+
+        #battleInfo, #playerInfo {
+            margin-bottom: 20px;
+        }
+
+        #hand {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .card {
+            width: 70px;
+            height: 100px;
+            margin: 5px;
+            border-radius: 8px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.15s;
+        }
+
+            .card:hover {
+                transform: scale(1.05);
+            }
+
+        .red {
+            background-color: #e74c3c;
+        }
+
+        .blue {
+            background-color: #3498db;
+        }
+
+        .green {
+            background-color: #27ae60;
+        }
+
+        .yellow {
+            background-color: #f1c40f;
+            color: #333;
+        }
+
+        .wildCard {
+            background-color: #555;
+            color: #fff;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            margin: 10px;
+            border-radius: 5px;
+            background: #444;
+            color: #fff;
+            cursor: pointer;
+        }
+
+            button:hover {
+                background: #666;
+            }
+
+        #log {
+            background: #444;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Uno Battle Quest: Full Rules</h1>
+        <div id="game">
+            <!-- The Start Game button is inserted here by HTML -->
+            <button id="startGameButton">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        // Global game variables
+        let deck = [];
+        let discardPile = [];
+        let playerHand = [];
+        let enemyHand = [];
+        let currentColor = "";
+        let currentTurn = "player"; // "player" or "enemy"
+        let skipNext = false;       // flag: skip opponent’s turn
+        let enemies = [];
+        let currentEnemyIndex = 0;
+        let logMessages = "";
+
+        // Log function: appends messages to the log area
+        function log(text) {
+            logMessages = text + "<br>" + logMessages;
+            const logElement = document.getElementById("log");
+            if (logElement) {
+                logElement.innerHTML = logMessages;
+            }
+        }
+
+        // Create a full UNO deck (108 cards)
+        function createDeck() {
+            let tempDeck = [];
+            const colors = ["red", "blue", "green", "yellow"];
+            colors.forEach(color => {
+                // One 0 card per color
+                tempDeck.push({ color: color, type: "number", value: 0 });
+                // Two copies of cards 1-9 per color
+                for (let i = 1; i <= 9; i++) {
+                    tempDeck.push({ color: color, type: "number", value: i });
+                    tempDeck.push({ color: color, type: "number", value: i });
+                }
+                // Two Skip cards per color
+                tempDeck.push({ color: color, type: "skip" });
+                tempDeck.push({ color: color, type: "skip" });
+                // Two Reverse cards per color
+                tempDeck.push({ color: color, type: "reverse" });
+                tempDeck.push({ color: color, type: "reverse" });
+                // Two Draw Two cards per color
+                tempDeck.push({ color: color, type: "draw2" });
+                tempDeck.push({ color: color, type: "draw2" });
+            });
+            // Add 4 Wild cards and 4 Wild Draw Four cards (colorless initially)
+            for (let i = 0; i < 4; i++) {
+                tempDeck.push({ color: null, type: "wild" });
+                tempDeck.push({ color: null, type: "wildDraw4" });
+            }
+            return tempDeck;
+        }
+
+        // Standard Fisher–Yates shuffle
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Draw a card from the deck; if empty, rebuild from discard pile
+        function drawCard() {
+            if (deck.length === 0) {
+                let top = discardPile.pop();
+                deck = shuffle(discardPile);
+                discardPile = [top];
+            }
+            return deck.pop();
+        }
+
+        // Initialize the battle against the current enemy
+        function initializeBattle() {
+            deck = shuffle(createDeck());
+            discardPile = [];
+            playerHand = [];
+            enemyHand = [];
+
+            // Deal 7 cards each
+            for (let i = 0; i < 7; i++) {
+                playerHand.push(drawCard());
+                enemyHand.push(drawCard());
+            }
+
+            // Initialize the discard pile with one card from the deck
+            let firstCard = drawCard();
+            if (firstCard.type === "wild" || firstCard.type === "wildDraw4") {
+                firstCard.color = randomColor();
+            }
+            discardPile.push(firstCard);
+            currentColor = firstCard.color;
+            currentTurn = "player";
+            skipNext = false;
+            logMessages = "";
+            log("Battle started against " + enemies[currentEnemyIndex].name + "!");
+            updateUI();
+
+            // Optionally note if initial card was an action card
+            if (["skip", "reverse", "draw2"].includes(firstCard.type)) {
+                log("Initial action card effect ignored.");
+            }
+        }
+
+        // Update the game UI according to the current state
+        function updateUI() {
+            const enemy = enemies[currentEnemyIndex];
+            const topCard = discardPile[discardPile.length - 1];
+            const gameDiv = document.getElementById("game");
+            let html = `
+            <div id="battleInfo">
+              <h2>Enemy: ${enemy.name} (Cards: ${enemyHand.length})</h2>
+              <div id="topCard">Top Card: ${renderCard(topCard)}</div>
+              <p>Active Color: <span style="font-weight:bold;">${currentColor}</span></p>
+            </div>
+            <div id="playerInfo">
+              <h2>Your Hand (${playerHand.length} cards):</h2>
+              <div id="hand">`;
+            playerHand.forEach((card, index) => {
+                html += `<div class="card ${cardDisplayClass(card)}" onclick="playPlayerCard(${index})">
+                       ${cardLabel(card)}
+                     </div>`;
+            });
+            html += `</div>
+              <button onclick="playerDrawCard()">Draw Card</button>
+            </div>
+            <div id="log">${logMessages}</div>
+          `;
+            gameDiv.innerHTML = html;
+        }
+
+        // Determine the CSS class for a card based on its type and color
+        function cardDisplayClass(card) {
+            if (card.type === "wild" || card.type === "wildDraw4") {
+                return "wildCard";
+            } else {
+                return card.color;
+            }
+        }
+
+        // Provide the label to display on a card
+        function cardLabel(card) {
+            if (card.type === "number") {
+                return card.value;
+            } else if (card.type === "skip") {
+                return "Skip";
+            } else if (card.type === "reverse") {
+                return "Reverse";
+            } else if (card.type === "draw2") {
+                return "+2";
+            } else if (card.type === "wild") {
+                return "Wild";
+            } else if (card.type === "wildDraw4") {
+                return "Wild+4";
+            }
+            return "";
+        }
+
+        // Render a card as HTML (for the top discard display)
+        function renderCard(card) {
+            return `<div class="card ${cardDisplayClass(card)}" style="cursor:default;">
+                    ${cardLabel(card)}
+                  </div>`;
+        }
+
+        // Check if a given card is legally playable based on UNO rules
+        function isPlayable(card) {
+            const top = discardPile[discardPile.length - 1];
+            if (card.type === "wild" || card.type === "wildDraw4") return true;
+            if (card.color === currentColor) return true;
+            if (top.type === card.type && card.type !== "number") return true;
+            if (card.type === "number" && top.type === "number" && card.value === top.value) return true;
+            return false;
+        }
+
+        // Player plays a selected card from their hand
+        function playPlayerCard(index) {
+            if (currentTurn !== "player") {
+                log("It's not your turn!");
+                return;
+            }
+            const card = playerHand[index];
+            if (!isPlayable(card)) {
+                log("You cannot play that card!");
+                return;
+            }
+            // Remove player card and place it on the discard pile
+            playerHand.splice(index, 1);
+            discardPile.push(card);
+
+            if (card.type === "wild" || card.type === "wildDraw4") {
+                let chosen = prompt("Enter a color (red, blue, green, yellow):", "red");
+                chosen = chosen ? chosen.toLowerCase() : "red";
+                if (["red", "blue", "green", "yellow"].includes(chosen)) {
+                    card.color = chosen;
+                    currentColor = chosen;
+                } else {
+                    card.color = "red";
+                    currentColor = "red";
+                }
+            } else {
+                currentColor = card.color;
+            }
+            log("You played a " + cardLabel(card) + " card.");
+
+            // Apply action effects if applicable
+            if (card.type === "skip" || card.type === "reverse") {
+                log("Enemy's turn skipped due to " + cardLabel(card) + " card.");
+                skipNext = true;
+            } else if (card.type === "draw2") {
+                log("Enemy draws 2 cards due to Draw Two!");
+                enemyHand.push(drawCard());
+                enemyHand.push(drawCard());
+                skipNext = true;
+            } else if (card.type === "wildDraw4") {
+                log("Enemy draws 4 cards due to Wild Draw Four!");
+                for (let i = 0; i < 4; i++) {
+                    enemyHand.push(drawCard());
+                }
+                skipNext = true;
+            }
+
+            // Check win condition: if player's hand is empty
+            if (playerHand.length === 0) {
+                log("You have emptied your hand! You win this battle!");
+                updateUI();
+                setTimeout(nextBattle, 1500);
+                return;
+            }
+
+            // Hand over to enemy turn
+            currentTurn = "enemy";
+            updateUI();
+            setTimeout(enemyTurn, 1000);
+        }
+
+        // Enemy AI turn
+        function enemyTurn() {
+            if (currentTurn !== "enemy") return;
+            if (skipNext) {
+                log("Enemy turn skipped!");
+                skipNext = false;
+                currentTurn = "player";
+                updateUI();
+                return;
+            }
+
+            let played = false;
+            for (let i = 0; i < enemyHand.length; i++) {
+                const card = enemyHand[i];
+                if (isPlayable(card)) {
+                    enemyHand.splice(i, 1);
+                    discardPile.push(card);
+                    if (card.type === "wild" || card.type === "wildDraw4") {
+                        const randCol = randomColor();
+                        card.color = randCol;
+                        currentColor = randCol;
+                        log("Enemy played " + cardLabel(card) + " and chose color " + randCol + ".");
+                    } else {
+                        currentColor = card.color;
+                        log("Enemy played " + cardLabel(card) + ".");
+                    }
+                    if (card.type === "skip" || card.type === "reverse") {
+                        log("Your turn is skipped due to enemy's " + cardLabel(card) + " card.");
+                        skipNext = true;
+                    } else if (card.type === "draw2") {
+                        log("You draw 2 cards due to enemy's Draw Two!");
+                        playerHand.push(drawCard());
+                        playerHand.push(drawCard());
+                        skipNext = true;
+                    } else if (card.type === "wildDraw4") {
+                        log("You draw 4 cards due to enemy's Wild Draw Four!");
+                        for (let j = 0; j < 4; j++) {
+                            playerHand.push(drawCard());
+                        }
+                        skipNext = true;
+                    }
+                    played = true;
+                    break;
+                }
+            }
+            if (!played) {
+                const drawn = drawCard();
+                enemyHand.push(drawn);
+                log("Enemy had no playable card and draws a card.");
+            }
+
+            // Check if enemy won the battle
+            if (enemyHand.length === 0) {
+                log("Enemy has emptied their hand. You lose this battle!");
+                updateUI();
+                setTimeout(gameOver, 1500);
+                return;
+            }
+
+            if (skipNext) {
+                log("Enemy's effect causes you to lose your turn.");
+                skipNext = false;
+                currentTurn = "enemy";
+                updateUI();
+                setTimeout(enemyTurn, 1000);
+            } else {
+                currentTurn = "player";
+            }
+            updateUI();
+        }
+
+        // Player draws a card
+        function playerDrawCard() {
+            if (currentTurn !== "player") {
+                log("It's not your turn!");
+                return;
+            }
+            const card = drawCard();
+            playerHand.push(card);
+            log("You drew a card.");
+            updateUI();
+            // Optionally, you can auto-play the drawn card if it is playable.
+        }
+
+        // Utility: return a random color string
+        function randomColor() {
+            const colors = ["red", "blue", "green", "yellow"];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // Prepare for the next battle
+        function nextBattle() {
+            currentEnemyIndex++;
+            if (currentEnemyIndex >= enemies.length) {
+                winGame();
+            } else {
+                log("Prepare for your next battle against " + enemies[currentEnemyIndex].name + "!");
+                setTimeout(initializeBattle, 1500);
+            }
+        }
+
+        // Game win screen
+        function winGame() {
+            log("Congratulations! You have defeated all enemies and emerged victorious!");
+            document.getElementById("game").innerHTML =
+                `<h2>Congratulations! You have completed Uno Battle Quest!</h2>`;
+        }
+
+        // Game over screen
+        function gameOver() {
+            log("Game Over. You were defeated in battle.");
+            document.getElementById("game").innerHTML =
+                `<h2>Game Over. Better luck next time!</h2>`;
+        }
+
+        // Start a new game: setup enemy array and begin the first battle
+        function startGame() {
+            currentEnemyIndex = 0;
+            enemies = [
+                { name: "Goblin Uno" },
+                { name: "Bandit Uno" },
+                { name: "Wizard Uno" },
+                { name: "Uno Overlord" }  // Final boss battle!
+            ];
+            initializeBattle();
+        }
+
+        // When the document is ready, attach the event listener to the Start Game button
+        document.addEventListener("DOMContentLoaded", function () {
+            document.getElementById("startGameButton").addEventListener("click", startGame);
+        });
+    </script>
+</body>
+</html>
